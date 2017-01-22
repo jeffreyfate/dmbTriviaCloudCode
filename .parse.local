@@ -1,0 +1,10 @@
+{
+  "applications": {
+    "DMB Trivia": {
+      "applicationId": "ImI8mt1EM3NhZNRqYZOyQpNSwlfsswW73mHsZV3R"
+    },
+    "_default": {
+      "link": "DMB Trivia"
+    }
+  }
+}
