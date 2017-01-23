@@ -1,3 +1,9 @@
+/**
+ * Triggered each time a {Parse.User} is created or updated, which starts the user migration to Backendless.
+ *
+ * @param {Object} the user that was changed
+ * @param {Function} handles the user that was changed
+ */
 Parse.Cloud.afterSave(Parse.User, function(request) {
   Parse.Cloud.httpRequest({
     method: 'POST',
@@ -13,19 +19,19 @@ Parse.Cloud.afterSave(Parse.User, function(request) {
   });
 });
 
+/**
+ * Migrate a created or updated user to Backendless from Parse.
+ *
+ * @param {string} name of the job
+ * @param {function} takes the user request and resolves the response after performing the migration
+ */
 Parse.Cloud.job("userMigration", function(request, response) {
   var body = JSON.parse(request.body);
   var backendlessUser = require('cloud/backendlessUser.js');
-  if (body.userId) {
-    backendlessUser.getBackendlessUser(body.userId, "", "", body,
-      backendlessUser.putBackendlessUser);
-    response.success('userMigration success');
-  } else if (body.username) {
-    backendlessUser.getBackendlessUser("", body.username, "", body,
-      backendlessUser.putBackendlessUser);
-    response.success('userMigration success');
+  if (body.username) {
+    backendlessUser.get(body.username, "", body, backendlessUser.put, response);
   } else {
-    response.error('userMigration failure: missing userId and username');
+    response.error('userMigration failure: missing username');
   }
 });
 
@@ -242,10 +248,9 @@ Parse.Cloud.job("venueMigration", function(request, response) {
 
 Parse.Cloud.job("correctAnswersMigration", function(request, response) {
     var body = JSON.parse(request.body);
-    //console.log("body:");
-    //console.log(body);
-    // {"createdAt":"2016-07-31T23:03:28.140Z","hint":false,"objectId":"76xZOQBGas","questionId":"rFZsZSCWDL","updatedAt":"2016-07-31T23:03:28.140Z","userId":"LuzjEBVnC8"}
     var userId = body.userId;
+    var username;
+    // TODO In Parse find username from userId to pass to get
     var newCorrect = {
         "objectId": body.questionId,
         "___class": "Question"
@@ -259,7 +264,7 @@ Parse.Cloud.job("correctAnswersMigration", function(request, response) {
     }
     var backendlessUser = require('cloud/backendlessUser.js');
     // Check to see if the user already exists in Backendless
-    backendlessUser.getBackendlessUser(userId, "", "correct", body,
+    backendlessUser.get(username, "", "correct", body,
       // Found in Backendless
       function(username, userObject) {
         var correctArray = [];
@@ -279,7 +284,7 @@ Parse.Cloud.job("correctAnswersMigration", function(request, response) {
         userObject.hint = hintArray;
         var params = JSON.stringify(userObject);
         // Update the user with correct answer data
-        backendlessUser.putBackendlessUser(userObject.username, params,
+        backendlessUser.put(userObject.username, params,
           // Success
           function(httpResponseText) {
           //console.log(httpResponseText);

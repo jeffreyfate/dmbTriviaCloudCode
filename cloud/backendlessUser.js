@@ -1,24 +1,21 @@
 module.exports = {
   /**
-   * Grab a user from Backendless given uniquely identifiable data
-   * Updates the user if present, otherwise logs that user doesn't exist
-   * Users must be created directly using Backendless API
+   * Finds a user in Backendless given uniquely identifiable data then updates the user if present, otherwise logs that
+   * the user doesn't exist.
    *
-   * @param {string} objectId - value expected in the objectId column
+   * Note: Users must be created directly using Backendless API
+   *
    * @param {string} username - value expected in the username column
    * @param {string} relations - column name to load relations from
    * @param {Object} data - user data from Parse to be saved to Backendless
    * if applicable
-   * @param {updateCallback} updateCallback - callback that updates data in
-   * Backendless if user already exists
+   * @param {updateCallback} updateCallback - callback that updates data in Backendless if user already exists
+   * @param {Object} response - returned from the cloud job
    */
-  getBackendlessUser: function (objectId, username, relations, data,
-      updateCallback) {
+  get: function (username, relations, data, updateCallback, response) {
     var queryParams = "?where=";
-    if (objectId) {
-      queryParams += "objectId%3D'" + objectId + "'";
-    } else if (username) {
-      queryParams += "username%3D'" + username + "'";
+    if (username) {
+      queryParams += "username%3D%27" + username + "%27";
     } else {
       queryParams = '';
     }
@@ -34,27 +31,21 @@ module.exports = {
         url: 'https://api.backendless.com/v1/data/Users' + queryParams,
         headers: {
             'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
-            'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
-            'Content-Type': 'application/json',
-            'application-type': 'REST'
+            'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500'
         }
     }).then(function(httpResponse) {
       var json = httpResponse.data.data;
       if (json.length > 0) {
-        updateCallback(json[0].username, json[0], console.log, console.log);
+        updateCallback(json[0].username, json[0], response.success, response.error);
       } else {
-        console.log("No user exists in Backendless:");
-        console.log(queryParams);
+        response.success(httpResponse.text);
       }
     }, function(httpResponse) {
-      console.log("GET Backendless user FAILED with " + queryParams);
-      var json = JSON.parse(httpResponse);
-      console.log("Response:");
-      console.log(json);
+      response.error(httpResponse.text);
     });
   },
   /**
-   * Update a user in Backendless
+   * Update a user in Backendless with data from Parse.
    *
    * @callback updateCallback
    * @param {string} username - value expected in the username column
@@ -62,7 +53,7 @@ module.exports = {
    * @param {stringCallback} successCallback - handle success message
    * @param {stringCallback} errorCallback - handle error message
    */
-  putBackendlessUser: function (username, data, successCallback, errorCallback) {
+  put: function (username, data, successCallback, errorCallback) {
     var objectId;
     if (data.created) {
       delete data.created;
@@ -110,14 +101,12 @@ module.exports = {
         },
         body: data
     }).then(function(httpResponse) {
-      console.log("Success");
       if (successCallback) {
         successCallback(httpResponse.text);
       } else {
         console.log(httpResponse.text);
       }
     }, function(httpResponse) {
-      console.log("Error");
       if (errorCallback) {
         errorCallback(httpResponse.text);
       } else {
@@ -126,31 +115,33 @@ module.exports = {
     });
   },
   /**
-   * NOT FUNCTIONING - NEED TO USE THE CREATE USER API
-   * Create a user in Backendless
+   * Create a user in Backendless via the user register API.
    *
+   * @callback createCallback
    * @param {Object} data - data of user to create
    * @param {stringCallback} successCallback - handle success message
    * @param {stringCallback} errorCallback - handle error message
    */
-  postBackendlessUser: function (data, successCallback, errorCallback) {
-    console.log("postBackendlessUser");
-    console.log(data);
-    var authData = JSON.stringify(data.authData);
-    var parameters = {
-        "authData": authData,
-        "createdAt": data.createdAt,
-        "displayName": data.displayName,
-        "score": data.score,
-        "sessionToken": data.sessionToken,
-        "updatedAt": data.updatedAt,
-        "username": "'" + data.username + "'",
-        "password": "'" + data.password + "'"
-    };
+  post: function (data, successCallback, errorCallback) {
+    var authData = "";
+    var parameters = "";
+    if (data && data.authData) {
+      authData = JSON.stringify(data.authData);
+      parameters = {
+          "authData": authData,
+          "createdAt": data.createdAt,
+          "displayName": data.displayName,
+          "score": data.score,
+          "sessionToken": data.sessionToken,
+          "updatedAt": data.updatedAt,
+          "username": "'" + data.username + "'",
+          "password": "'" + data.password + "'"
+      };
+    }
     var params = JSON.stringify(parameters);
     Parse.Cloud.httpRequest({
         method: 'POST',
-        url: 'https://api.backendless.com/v1/data/Users',
+        url: 'https://api.backendless.com/v1/users/register',
         headers: {
             'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
             'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
@@ -159,19 +150,17 @@ module.exports = {
         },
         body: params
     }).then(function(httpResponse) {
-      console.log("Success");
       if (successCallback) {
-        successCallback(body);
+        successCallback(httpResponse.text);
       } else {
         console.log(httpResponse.text);
       }
     }, function(httpResponse) {
-      console.log("Error");
       if (errorCallback) {
-        errorCallback(body);
+        errorCallback(httpResponse.text);
       } else {
         console.log(httpResponse.text);
       }
     });
   }
-}
+};

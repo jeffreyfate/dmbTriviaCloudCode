@@ -1,5 +1,3 @@
-var Buffer = require('buffer').Buffer;
-
 module.exports.get = function (fileUrl) {
   return Parse.Cloud.httpRequest({
       method: 'GET',
