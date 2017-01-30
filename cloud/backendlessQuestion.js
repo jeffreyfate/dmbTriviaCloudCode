@@ -1,9 +1,16 @@
 module.exports = {
-  getBackendlessQuestion: function(objectId, body, success, error, response) {
+  get: function(question, success, error) {
+    var utils = require('cloud/utils.js');
+    console.log("question:");
+    console.log(question);
+    question = question.replace(/'/g, "''");
+    console.log("question:");
+    console.log(question);
+    question = "'" + question + "'";
+    console.log("question:");
+    console.log(question);
     console.log('getBackendlessQuestion');
-    console.log('body:');
-    console.log(body);
-    var queryParams = '?where=objectId%3D\'' + objectId + '\'';
+    var queryParams = '?where=' + encodeURIComponent('question=' + question);
     console.log('https://api.backendless.com/v1/data/Question' + queryParams);
     Parse.Cloud.httpRequest({
         method: 'GET',
@@ -18,27 +25,28 @@ module.exports = {
       if (httpResponse.data.totalObjects === 0) {
         console.log('objects 0');
         if (error) {
-          error(body, null, null, response);
+          error(null, null, response);
         }
         else {
-          reponse.error('Object ' + objectId + ' not found!')
+          console.log('Question "' + question + '" not found!')
         }
       }
       else {
         console.log('objects not 0');
         if (success) {
-          success(objectId, body, null, null, response);
+          success(httpResponse.data);
         }
         else {
-          response.success('Object ' + objectId + ' found!');
+          console.log('Object "' + question + '" found!');
         }
       }
     }, function(httpResponse) {
       console.log('getBackendlessQuestion error!');
-      response.error(httpResponse.message);
+      console.log(httpResponse);
     });
   },
-  putBackendlessQuestion: function(objectId, body, success, error, response) {
+  // TODO Fix put and post to handle question text instead of objectId
+  put: function(objectId, body, success, error, response) {
     console.log('putBackendlessQuestion');
     console.log(body);
     var queryParams = '?where=objectId%3D\'' + objectId + '\'';
@@ -71,7 +79,7 @@ module.exports = {
       }
     });
   },
-  postBackendlessQuestion: function(body, success, error, response) {
+  post: function(body, success, error, response) {
     console.log('postBackendlessQuestion');
     console.log(body);
     console.log(JSON.stringify(body));

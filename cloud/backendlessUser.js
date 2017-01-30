@@ -36,7 +36,7 @@ module.exports = {
     }).then(function(httpResponse) {
       var json = httpResponse.data.data;
       if (json.length > 0) {
-        updateCallback(json[0].username, json[0], response.success, response.error);
+        updateCallback(json[0].username, data, json[0], response.success, response.error);
       } else {
         response.success(httpResponse.text);
       }

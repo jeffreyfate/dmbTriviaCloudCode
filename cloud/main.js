@@ -73,6 +73,284 @@ Parse.Cloud.afterDelete("Audio", function(request) {
   }
 });
 
+Parse.Cloud.afterSave('CorrectAnswers', function(request) {
+  Parse.Cloud.httpRequest({
+    method: 'POST',
+    url: 'https://api.parse.com/1/jobs/correctAnswersMigration',
+    headers: {
+      'X-Parse-Application-Id': 'ImI8mt1EM3NhZNRqYZOyQpNSwlfsswW73mHsZV3R',
+      'X-Parse-Master-Key': 'QirtSimQTDJhPsCsIdGbEz9ymw5gclXhugs0l6ZD',
+      'Content-Type': 'application/json;charset=utf-8'
+    },
+    body: request.object
+  }).then(function(httpResponse) {
+    //console.log(httpResponse);
+  }, function(httpResponse) {
+    //console.error('**************************************************');
+    //console.error('POST to correctAnswersMigration failed with response code ' +
+    //    httpResponse.status);
+    //console.error(httpResponse);
+    //console.error('**************************************************');
+  });
+});
+
+/**
+ * objectId
+ * ACL
+ * createdAt
+ * hint
+ * questionId
+ * updatedAt
+ * userId
+ *
+ * TO
+ *
+ * (In Users)
+ * correct (relation to Question)
+ * hint (relation to Question)
+ *
+ * 1. Create relation to Question from User for both correct and hint (if hint is true)
+ *  a. Get Question (P)
+ *  b. Get question text (P)
+ *  c. Find Question by text (B)
+ *  d. Get User (P)
+ *  e. Get User username (P)
+ *  f. Find User by username (D)
+ *  g. Create relation to that Question for that User (B)
+ */
+Parse.Cloud.job("correctAnswersMigration", function(request, response) {
+  var body = JSON.parse(request.body);
+  var userId = body.userId;
+  var questionId = body.questionId;
+  var username;
+  var parseUser = require('cloud/parseUser.js');
+  parseUser.get(userId, function(httpResponseText) {
+    console.log("Found userId " + userId);
+    console.log(httpResponseText);
+    var parsedResponse = JSON.parse(httpResponseText);
+    console.log("Found username " + parsedResponse.username);
+    username = parsedResponse.username;
+    var backendlessUser = require('cloud/backendlessUser.js');
+    // Check to see if the user already exists in Backendless
+    backendlessUser.get(username, "correct", body,
+      // Found in Backendless
+      function(username, incomingData, userData, successCallback, errorCallback) {
+        console.log("incomingData");
+        console.log(incomingData);
+        console.log("userData");
+        console.log(userData);
+        console.log("correct");
+        console.log(userData.correct);
+        var correct = userData.correct;
+        console.log("correct[0]");
+        console.log(correct[0]);
+        var parseQuestion = require('cloud/parseQuestion.js');
+        parseQuestion.get(
+          questionId,
+          function(httpResponse) {
+            var question = JSON.parse(httpResponse).question;
+            console.log("get parse question response:");
+            console.log(httpResponse);
+            console.log(question);
+            var backendlessQuestion = require('cloud/backendlessQuestion.js');
+            backendlessQuestion.get(
+              question,
+              function(httpResponse) {
+                console.log("backendlessQuestion.get response");
+                console.log(httpResponse);
+              },
+              function(httpResponse) {
+                console.log("backendlessQuestion.get error");
+                console.log(httpResponse);
+              }
+            );
+            var newCorrect = {
+              "objectId": incomingData.questionId,
+              "___class": "Question"
+            };
+            console.log(correct.length);
+            correct.push(newCorrect);
+            console.log("correct");
+            console.log(correct.length);
+            console.log(correct[correct.length-1]);
+            successCallback("done");
+          },
+          function(httpResponse) {
+            console.log(httpResponse);
+            response.error(httpResponse);
+          }
+        );
+        /**
+        var correctArray = [];
+        var hintArray = [];
+        for (var i = 0; i < userObject.correct.length; i++) {
+          var correctAnswer = {};
+          correctAnswer.___class = userObject.correct[i].___class;
+          correctAnswer.objectId = userObject.correct[i].objectId;
+          correctArray.push(correctAnswer);
+        }
+        hintArray = userObject.hint;
+        correctArray.push(newCorrect);
+        userObject.correct = correctArray;
+        if (hint) {
+          hintArray.push(hint);
+        }
+        userObject.hint = hintArray;
+        var params = JSON.stringify(userObject);
+        // Update the user with correct answer data
+        backendlessUser.put(userObject.username, params,
+          // Success
+          function(httpResponseText) {
+            //console.log(httpResponseText);
+            // Error
+          }, function(httpResponseText) {
+            //console.log(httpResponseText);
+            //console.log("ERROR $$$$$$$$$$$$$$$$$$$$$$$$$$$$");
+            //console.log(params);
+        });
+         */
+      },
+      response
+    );
+  }, function(httpResponseText) {
+    response.error(httpResponseText);
+  });
+  var hint;
+  if (body.hint) {
+    hint = {
+      "objectId": body.questionId,
+      "___class": "Question"
+    }
+  }
+
+  /**
+   Parse.Cloud.httpRequest({
+        method: 'GET',
+        url: 'https://api.backendless.com/v1/data/Users/' + userId +
+            '?loadRelations=correct',
+        headers: {
+            'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
+            'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
+            'Content-Type': 'application/json',
+            'application-type': 'REST'
+        }
+    }).then(function(httpResponse) {
+        userObject = JSON.parse(httpResponse.text);
+        correctArray = JSON.parse(httpResponse.text).correct;
+        hintArray = JSON.parse(httpResponse.text).hint;
+        correctArray.push(correct);
+        userObject.correct = correctArray;
+        if (hint) {
+            hintArray.push(hint);
+        }
+        userObject.hint = hintArray;
+        var params = JSON.stringify(userObject);
+        Parse.Cloud.httpRequest({
+            method: 'PUT',
+            url: 'https://api.backendless.com/v1/data/Users/' + userId,
+            headers: {
+                'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
+                'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
+                'Content-Type': 'application/json',
+                'application-type': 'REST'
+            },
+            body: params
+        }).then(function(httpResponse) {
+            console.log("PUT User " + userId + " SUCCESS!");
+            console.log(httpResponse);
+        }, function(httpResponse) {
+            console.log("PUT User " + userId + " FAILED!");
+            console.log(httpResponse);
+        });
+    }, function(httpResponse) {
+        // Get the Parse user
+        console.log('https://api.parse.com/1/users/' + userId);
+        Parse.Cloud.httpRequest({
+            method: 'GET',
+            url: 'https://api.parse.com/1/users/' + userId,
+            headers: {
+                'X-Parse-Application-Id': 'ImI8mt1EM3NhZNRqYZOyQpNSwlfsswW73mHsZV3R',
+                'X-Parse-Master-Key': 'QirtSimQTDJhPsCsIdGbEz9ymw5gclXhugs0l6ZD',
+                'Content-Type': 'application/json;charset=utf-8'
+            }
+        }).then(function(httpResponse) {
+            // Add this user to Backendless
+            console.log("########################################################");
+            console.log("GET USER FROM PARSE:");
+            console.log(httpResponse.text);
+            console.log("########################################################");
+
+            Parse.Cloud.httpRequest({
+                method: 'POST',
+                url: 'https://api.parse.com/1/jobs/',
+                headers: {
+                    'X-Parse-Application-Id': 'ImI8mt1EM3NhZNRqYZOyQpNSwlfsswW73mHsZV3R',
+                    'X-Parse-Master-Key': 'QirtSimQTDJhPsCsIdGbEz9ymw5gclXhugs0l6ZD',
+                    'Content-Type': 'application/json;charset=utf-8'
+                },
+                body: httpResponse.text
+            }).then(function(httpResponse) {
+              Parse.Cloud.httpRequest({
+                  method: 'GET',
+                  url: 'https://api.backendless.com/v1/data/Users/' + userId +
+                      '?loadRelations=correct',
+                  headers: {
+                      'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
+                      'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
+                      'Content-Type': 'application/json',
+                      'application-type': 'REST'
+                  }
+              }).then(function(httpResponse) {
+                  userObject = JSON.parse(httpResponse.text);
+                  correctArray = JSON.parse(httpResponse.text).correct;
+                  hintArray = JSON.parse(httpResponse.text).hint;
+                  correctArray.push(correct);
+                  userObject.correct = correctArray;
+                  if (hint) {
+                      hintArray.push(hint);
+                  }
+                  userObject.hint = hintArray;
+                  var params = JSON.stringify(userObject);
+                  Parse.Cloud.httpRequest({
+                      method: 'PUT',
+                      url: 'https://api.backendless.com/v1/data/Users/' + userId,
+                      headers: {
+                          'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
+                          'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
+                          'Content-Type': 'application/json',
+                          'application-type': 'REST'
+                      },
+                      body: params
+                  }).then(function(httpResponse) {
+                      console.log("PUT User " + userId + " SUCCESS!");
+                      console.log(httpResponse);
+                  }, function(httpResponse) {
+                      console.log("PUT User " + userId + " FAILED!");
+                      console.log(httpResponse);
+                  });
+              }, function(httpResponse) {
+                console.log("GET User " + userId + " FAILED!");
+                console.log(httpResponse);
+              });
+            }, function(httpResponse) {
+                console.error('**************************************************');
+                console.error('POST to userMigration failed with response code ' +
+                    httpResponse.status);
+                console.error(httpResponse);
+                console.error('**************************************************');
+            });
+        }, function(httpResponse) {
+            // User exists in neither backendless nor Parse
+            console.error('**************************************************');
+            console.error('GET user failed with response code ' +
+                httpResponse.status);
+            console.error(httpResponse);
+            console.error('**************************************************');
+        });
+    });
+   */
+});
+
 Parse.Cloud.job("questionMigration", function(request, response) {
   console.log('questionMigration request:');
   console.log(request);
@@ -96,9 +374,9 @@ Parse.Cloud.job("questionMigration", function(request, response) {
     },
      */
     var backendlessQuestion = require('cloud/backendlessQuestion.js');
-    backendlessQuestion.getBackendlessQuestion(body.objectId, newBody,
-      backendlessQuestion.putBackendlessQuestion,
-      backendlessQuestion.postBackendlessQuestion, response);
+    backendlessQuestion.get(body.objectId, newBody,
+      backendlessQuestion.put,
+      backendlessQuestion.post, response);
   }
   else {
     response.error('Missing objectId for Question!');
@@ -246,190 +524,34 @@ Parse.Cloud.job("venueMigration", function(request, response) {
   }
 });
 
-Parse.Cloud.job("correctAnswersMigration", function(request, response) {
-    var body = JSON.parse(request.body);
-    var userId = body.userId;
-    var username;
-    // TODO In Parse find username from userId to pass to get
-    var newCorrect = {
-        "objectId": body.questionId,
-        "___class": "Question"
+Parse.Cloud.job('stageTransfer', function(request, response) {
+  var query = new Parse.Query("Stage");
+  query.each(function (stage) {
+    var start = new Date().getTime();
+    while (new Date().getTime() < start+1000) {
     }
-    var hint;
-    if (body.hint) {
-        hint = {
-            "objectId": body.questionId,
-            "___class": "Question"
-        }
-    }
-    var backendlessUser = require('cloud/backendlessUser.js');
-    // Check to see if the user already exists in Backendless
-    backendlessUser.get(username, "", "correct", body,
-      // Found in Backendless
-      function(username, userObject) {
-        var correctArray = [];
-        var hintArray = [];
-        for (var i = 0; i < userObject.correct.length; i++) {
-          var correctAnswer = {};
-          correctAnswer.___class = userObject.correct[i].___class;
-          correctAnswer.objectId = userObject.correct[i].objectId;
-          correctArray.push(correctAnswer);
-        }
-        hintArray = userObject.hint;
-        correctArray.push(newCorrect);
-        userObject.correct = correctArray;
-        if (hint) {
-          hintArray.push(hint);
-        }
-        userObject.hint = hintArray;
-        var params = JSON.stringify(userObject);
-        // Update the user with correct answer data
-        backendlessUser.put(userObject.username, params,
-          // Success
-          function(httpResponseText) {
-          //console.log(httpResponseText);
-          // Error
-        }, function(httpResponseText) {
-          //console.log(httpResponseText);
-          //console.log("ERROR $$$$$$$$$$$$$$$$$$$$$$$$$$$$");
-          //console.log(params);
-        });
-      }
-    );
-
-    /**
+    console.log(stage);
     Parse.Cloud.httpRequest({
-        method: 'GET',
-        url: 'https://api.backendless.com/v1/data/Users/' + userId +
-            '?loadRelations=correct',
-        headers: {
-            'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
-            'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
-            'Content-Type': 'application/json',
-            'application-type': 'REST'
-        }
-    }).then(function(httpResponse) {
-        userObject = JSON.parse(httpResponse.text);
-        correctArray = JSON.parse(httpResponse.text).correct;
-        hintArray = JSON.parse(httpResponse.text).hint;
-        correctArray.push(correct);
-        userObject.correct = correctArray;
-        if (hint) {
-            hintArray.push(hint);
-        }
-        userObject.hint = hintArray;
-        var params = JSON.stringify(userObject);
-        Parse.Cloud.httpRequest({
-            method: 'PUT',
-            url: 'https://api.backendless.com/v1/data/Users/' + userId,
-            headers: {
-                'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
-                'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
-                'Content-Type': 'application/json',
-                'application-type': 'REST'
-            },
-            body: params
-        }).then(function(httpResponse) {
-            console.log("PUT User " + userId + " SUCCESS!");
-            console.log(httpResponse);
-        }, function(httpResponse) {
-            console.log("PUT User " + userId + " FAILED!");
-            console.log(httpResponse);
-        });
-    }, function(httpResponse) {
-        // Get the Parse user
-        console.log('https://api.parse.com/1/users/' + userId);
-        Parse.Cloud.httpRequest({
-            method: 'GET',
-            url: 'https://api.parse.com/1/users/' + userId,
-            headers: {
-                'X-Parse-Application-Id': 'ImI8mt1EM3NhZNRqYZOyQpNSwlfsswW73mHsZV3R',
-                'X-Parse-Master-Key': 'QirtSimQTDJhPsCsIdGbEz9ymw5gclXhugs0l6ZD',
-                'Content-Type': 'application/json;charset=utf-8'
-            }
-        }).then(function(httpResponse) {
-            // Add this user to Backendless
-            console.log("########################################################");
-            console.log("GET USER FROM PARSE:");
-            console.log(httpResponse.text);
-            console.log("########################################################");
-
-            Parse.Cloud.httpRequest({
-                method: 'POST',
-                url: 'https://api.parse.com/1/jobs/',
-                headers: {
-                    'X-Parse-Application-Id': 'ImI8mt1EM3NhZNRqYZOyQpNSwlfsswW73mHsZV3R',
-                    'X-Parse-Master-Key': 'QirtSimQTDJhPsCsIdGbEz9ymw5gclXhugs0l6ZD',
-                    'Content-Type': 'application/json;charset=utf-8'
-                },
-                body: httpResponse.text
-            }).then(function(httpResponse) {
-              Parse.Cloud.httpRequest({
-                  method: 'GET',
-                  url: 'https://api.backendless.com/v1/data/Users/' + userId +
-                      '?loadRelations=correct',
-                  headers: {
-                      'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
-                      'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
-                      'Content-Type': 'application/json',
-                      'application-type': 'REST'
-                  }
-              }).then(function(httpResponse) {
-                  userObject = JSON.parse(httpResponse.text);
-                  correctArray = JSON.parse(httpResponse.text).correct;
-                  hintArray = JSON.parse(httpResponse.text).hint;
-                  correctArray.push(correct);
-                  userObject.correct = correctArray;
-                  if (hint) {
-                      hintArray.push(hint);
-                  }
-                  userObject.hint = hintArray;
-                  var params = JSON.stringify(userObject);
-                  Parse.Cloud.httpRequest({
-                      method: 'PUT',
-                      url: 'https://api.backendless.com/v1/data/Users/' + userId,
-                      headers: {
-                          'application-id': 'F1672081-F7D4-EF63-FFB1-BB39109F8500',
-                          'secret-key': '6F3CD423-E453-D5D1-FF70-46C165C6E500',
-                          'Content-Type': 'application/json',
-                          'application-type': 'REST'
-                      },
-                      body: params
-                  }).then(function(httpResponse) {
-                      console.log("PUT User " + userId + " SUCCESS!");
-                      console.log(httpResponse);
-                  }, function(httpResponse) {
-                      console.log("PUT User " + userId + " FAILED!");
-                      console.log(httpResponse);
-                  });
-              }, function(httpResponse) {
-                console.log("GET User " + userId + " FAILED!");
-                console.log(httpResponse);
-              });
-            }, function(httpResponse) {
-                console.error('**************************************************');
-                console.error('POST to userMigration failed with response code ' +
-                    httpResponse.status);
-                console.error(httpResponse);
-                console.error('**************************************************');
-            });
-        }, function(httpResponse) {
-            // User exists in neither backendless nor Parse
-            console.error('**************************************************');
-            console.error('GET user failed with response code ' +
-                httpResponse.status);
-            console.error(httpResponse);
-            console.error('**************************************************');
-        });
-    });
-    */
+      method: 'POST',
+      url: 'https://api.parse.com/1/jobs/stageMigration',
+      headers: {
+        'X-Parse-Application-Id': 'ImI8mt1EM3NhZNRqYZOyQpNSwlfsswW73mHsZV3R',
+        'X-Parse-Master-Key': 'QirtSimQTDJhPsCsIdGbEz9ymw5gclXhugs0l6ZD',
+        'Content-Type': 'application/json;charset=utf-8'
+      },
+      body: stage
+    }).then(function(httpResponse) {}, function(httpResponse) {});
+  }, {
+    success: function () {
+      response.success("success");
+    },
+    error: function () {
+      response.error("error");
+    }
+  });
 });
 
 Parse.Cloud.job('stageMigration', function(request, response) {
-    //console.log("***********************************************************");
-    //console.log("Parse.Cloud.job('stageMigration', function(request, response)");
-    //console.log("***********************************************************");
-    //console.log(response);
     var body = JSON.parse(request.body);
     var userObject;
     var hintArray;
@@ -452,7 +574,7 @@ Parse.Cloud.job('stageMigration', function(request, response) {
             var hint = {
                 "objectId": body.questionId,
                 "___class": "Question"
-            }
+            };
             hintArray.push(hint);
             userObject.hint = hintArray;
         }
@@ -460,7 +582,7 @@ Parse.Cloud.job('stageMigration', function(request, response) {
             var skip = {
                 "objectId": body.questionId,
                 "___class": "Question"
-            }
+            };
             skipArray.push(skip);
             userObject.skip = skipArray;
         }
@@ -476,18 +598,12 @@ Parse.Cloud.job('stageMigration', function(request, response) {
             },
             body: params
         }).then(function(httpResponse) {
-          response.success("PUT User " + body.userId + " SUCCESS!");
-            //console.log("PUT User " + body.userId + " SUCCESS!");
-            //console.log(httpResponse);
+          response.success("PUT User " + body.userId + " SUCCESS: " + httpResponse);
         }, function(httpResponse) {
-          response.error("PUT User " + body.userId + " FAILED!");
-            //console.log("PUT User " + body.userId + " FAILED!");
-            //console.log(httpResponse);
+          response.error("PUT User " + body.userId + " FAILED: " + httpResponse);
         });
     }, function(httpResponse) {
-      response.error("GET User " + body.userId + " FAILED!");
-        //console.log("GET Users ERROR response:");
-        //console.log(httpResponse);
+      response.error("GET User " + body.userId + " FAILED: " + httpResponse);
     });
 });
 
@@ -619,7 +735,7 @@ Parse.Cloud.afterSave('CorrectAnswers', function(request) {
         //console.error('**************************************************');
     });
 });
-
+*/
 Parse.Cloud.afterSave('Stage', function(request) {
   Parse.Cloud.httpRequest({
     method: 'POST',
@@ -630,10 +746,5 @@ Parse.Cloud.afterSave('Stage', function(request) {
       'Content-Type': 'application/json;charset=utf-8'
     },
     body: request.object
-  }).then(function(httpResponse) {
-    //console.log(httpResponse);
-  }, function(httpResponse) {
-    //console.error(httpResponse);
-  });
+  }).then(function(httpResponse) {}, function(httpResponse) {});
 });
-*/
